@@ -1,0 +1,25 @@
+{
+  "name": "ezdoc",
+  "version": "0.0.1",
+  "description": "docsify without shit",
+  "main": "lib/index.js",
+  "scripts": {
+    "build": "tsc && npm run-script link-browser-min",
+    "link-browser-min": "browserify -p tinyify lib/page/index.js -o browser/ezdoc.min.js",
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "author": "morglod",
+  "license": "MIT",
+  "devDependencies": {
+    "@types/dompurify": "^2.0.4",
+    "@types/highlightjs": "^10.1.0",
+    "@types/history": "^4.7.8",
+    "@types/marked": "^1.1.0",
+    "@types/node": "^14.14.7",
+    "@types/prismjs": "^1.16.2",
+    "browserify": "^17.0.0",
+    "dompurify": "^2.2.2",
+    "history": "^5.0.0",
+    "tinyify": "^3.0.0"
+  }
+}
