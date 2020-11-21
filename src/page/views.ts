@@ -1,5 +1,9 @@
-import { absoluteLinkWithHashFromRelativePath, currentViewPathAbsolutePathWithHash, extractRelativePartFromAbsolutePathWithHash } from "./paths";
+import { getConfig } from "./config";
+import { _deprec_absoluteLinkWithHashFromRelativePath, _deprec_currentViewPathAbsolutePathWithHash } from "./paths";
 import { renderMarkdown } from "./view-md";
+import type DOMPurifyModuleType from 'dompurify';
+import { _getCurrentRoute } from "./router";
+declare const DOMPurify: typeof DOMPurifyModuleType;
 
 export const requestViewText = (url: string) => fetch(url).then(x => x.text());
 
@@ -31,7 +35,8 @@ const viewRenders: {
     html: content => content,
     md: viewContent => {
         return renderMarkdown({
-            baseUrl: currentViewPathAbsolutePathWithHash(),
+            // baseUrl: currentViewPathAbsolutePathWithHash(),
+            baseUrl: _getCurrentRoute().routerInit.viewOrigin + '#/' + _getCurrentRoute().viewUrl,
         }, viewContent)
     },
     unknown: content => content,
@@ -42,10 +47,19 @@ export async function renderViewFromUrl(viewUrl: string, viewExt: ViewExt) {
     return renderViewContent(content, viewExt);
 }
 
-export function renderViewContent(viewContent: string, viewExt: ViewExt) {
+export async function renderViewContent(viewContent: string, viewExt: ViewExt) {
+    const cfg = getConfig();
+    let html = '';
+    
     if (viewExt in viewRenders) {
-        return viewRenders[viewExt](viewContent);
+        html = await viewRenders[viewExt](viewContent);
     } else {
-        return viewRenders['unknown'](viewContent);
+        html = await viewRenders['unknown'](viewContent);
     }
+
+    if (cfg.sanitize === 'dompurify') {
+        html = DOMPurify.sanitize(html);
+    }
+
+    return html;
 }

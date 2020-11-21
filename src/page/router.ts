@@ -1,43 +1,186 @@
-import { Location, Listener, Action } from 'history';
-import { createHashHistory } from 'history';
-
-import { absoluteLinkWithHashFromRelativePath, extractPathExt, extractPathFromHash, relaxateLink } from "./paths";
-import { renderViewFromUrl } from "./views";
+import { Location as HistoryLocation, Listener, Action as HistoryAction, History, createBrowserHistory, createHashHistory } from 'history';
+import { Config, getConfig } from './config';
+import { extractPathFromHash, isExternalPath, parentDir, parseQueryParams, sumPaths, tryRelativeFromAbsolutes, _relaxatePathPartsByRef } from "./paths";
 
 export type Router = {
-    onHashChange?: (oldHash: string, newHash: string) => void,
-    onViewChange?: (viewPath: string, newViewHTML: string) => void,
+    onRouteChange?: (newRoute: RouteInfo, oldRoute?: RouteInfo) => void,
+}
+
+export type RouterInit = {
+    /** full url */
+    url: string,
+    /** http://www.docs.com */
+    origin: string,
+    /** base app url */
+    baseUrl: string,
+    /** usually origin + baseUrl */
+    viewOrigin: string,
+    viewPath: string,
+    pathType: 'query' | 'hash',
+}
+
+export interface HistoryRouteState {
+
+}
+
+export interface RouteInfo {
+    readonly historyState: HistoryRouteState|undefined,
+    readonly routerInit: RouterInit,
+    
+    /** view absolute path */
+    viewFileUrl: string,
+
+    /** view path relative to router's viewOrigin */
+    viewUrl: string,
+}
+
+export function getRouterInit(location: typeof window["location"]): RouterInit {
+    const cfg = getConfig();
+
+    let pathType: 'unknown' | 'query' | 'hash'  = 'unknown';
+    let viewPath = cfg.defaultViewPath;
+    
+    const query = parseQueryParams<{
+        view: string,
+    }>(location.search);
+    
+    if (query.view) {
+        pathType = 'query';
+    } else if (!!location.hash) {
+        pathType = 'hash';
+    } else {
+        console.warn('unknown pathType (not query & not hash), fallback to hash');
+        location.hash = cfg.defaultViewPath;
+        pathType = 'hash';
+    }
+
+    if (pathType === 'hash') {
+        viewPath = extractPathFromHash(location.hash);
+    }
+
+    if (pathType === 'query') {
+        viewPath = query.view || cfg.defaultViewPath;
+    }
+
+    return {
+        url: location.href,
+        origin: location.origin,
+        baseUrl: location.pathname,
+        pathType,
+        viewPath,
+        viewOrigin: location.origin + location.pathname,
+    };
+}
+
+export function getViewPath(
+    routerInit: RouterInit,
+    historyLocation: HistoryLocation|undefined,
+    windowLocation: Location|undefined,
+    cfg: Config = getConfig(),
+): string {
+    if (historyLocation) {
+        switch (routerInit.pathType) {
+        case 'hash':
+            // remove '/' from start
+            return historyLocation.pathname[0] === '/' ? historyLocation.pathname.substr(1) : historyLocation.pathname;
+    
+        case 'query':
+            const query = parseQueryParams<{
+                view: string,
+            }>(historyLocation.search);
+            return query.view || cfg.defaultViewPath;
+        }
+    }
+    if (windowLocation) {
+        switch (routerInit.pathType) {
+        case 'hash':
+            const newHash = windowLocation.hash;
+            return extractPathFromHash(newHash) || cfg.defaultViewPath;
+    
+        case 'query':
+            const query = parseQueryParams<{
+                view: string,
+            }>(windowLocation.search);
+            return query.view || cfg.defaultViewPath;
+        }
+    }
+    return cfg.defaultViewPath;
+}
+
+let _currentRoute!: RouteInfo;
+
+export function _getCurrentRoute() {
+    return _currentRoute;
 }
 
 export function registerRouter(router: Router) {
-    const history = createHashHistory();
+    const routerInit = getRouterInit(window.location);
 
-    let oldHash = window.location.hash;
-    const handleHashChange: Listener<any> = (update) => {
-        const newHash = window.location.hash;
-        const viewPath = extractPathFromHash(newHash);
+    let history: History<HistoryRouteState>;
 
-        if (update && update.action === Action.Push) {
-            const relaxedViewPath = relaxateLink(extractPathFromHash(newHash));
-            if (viewPath !== relaxedViewPath) {
-                const newHash = '#/' + relaxedViewPath;
-                history.replace({ hash: newHash });
-            }
+    switch(routerInit.pathType) {
+        case 'hash':
+            history = createHashHistory({ window }) as History<HistoryRouteState>;
+            break;
+        case 'query':
+            history = createBrowserHistory({ window }) as History<HistoryRouteState>;
+            break;
+    }
+
+    let oldRoute: RouteInfo|undefined = undefined;
+
+    const handleRouteChange: Listener<HistoryRouteState> = (update) => {
+        if (update && update.action === HistoryAction.Replace) return;
+
+        const _viewPath = getViewPath(routerInit, update && update.location, window.location);
+        const viewPath = _relaxatePathPartsByRef(_viewPath.split('/')).join('/');
+
+        // TODO: replace path with relaxed
+        // !!it differs from pathType!!
+        // if (update && _viewPath !== viewPath) {
+        //     history.replace('/' + viewPath);
+        // }
+
+        let viewFileUrl = viewPath;
+
+        if (!isExternalPath(viewPath)) {
+            viewFileUrl = sumPaths(routerInit.viewOrigin, viewPath);
         }
-        if (router.onHashChange) router.onHashChange(oldHash, newHash);
 
-        renderViewFromUrl(viewPath, extractPathExt(viewPath)).then(html => {
-            if (router.onViewChange) router.onViewChange(viewPath, html);
-        });
+        const routeInfo: RouteInfo = {
+            viewUrl: viewPath,
+            viewFileUrl,
+            routerInit,
+            historyState: update ? update.location.state : undefined
+        };
+        _currentRoute = routeInfo;
 
-        oldHash = newHash;
+        console.log(routeInfo);
+        if (router.onRouteChange) router.onRouteChange(routeInfo, oldRoute);
+        oldRoute = routeInfo;
     };
 
-    const unlisten = history.listen(handleHashChange);
+    const unlistenHistory = history.listen(handleRouteChange);
 
-    handleHashChange(undefined!);
+    handleRouteChange(undefined!);
 
     return () => {
-        unlisten();
+        unlistenHistory();
     };
 }
+
+// export function linkToView(viewFileUrl: string) {
+//     const currentView = _getCurrentRoute();
+//     const currentParentUrl = parentDir(currentView.viewFileUrl);
+//     const targetViewPath = tryRelativeFromAbsolutes(currentParentUrl, viewFileUrl);
+
+//     if (currentView.routerInit.pathType === 'hash') {
+//         return sumPaths(sumPaths(currentView.routerInit.viewOrigin, '#'), targetViewPath);
+//     }
+
+//     if (currentView.routerInit.pathType === 'query') {
+//         return currentView.routerInit.viewOrigin + '?view=' + encodeURIComponent(targetViewPath);
+//     }
+
+//     return targetViewPath;
+// }

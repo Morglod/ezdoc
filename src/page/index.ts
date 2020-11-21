@@ -3,18 +3,24 @@ import { getConfig } from "./config";
 import { initHighlighter, afterViewMount } from "./highlighter";
 import { loadExternals } from "./loader";
 import { findRelativeViews } from "./scan-relations";
-import { absoluteLinkWithHashFromRelativePath, extractRelativePartFromAbsolutePathWithHash } from "./paths";
+import { _deprec_absoluteLinkWithHashFromRelativePath, extractPathExt } from "./paths";
+import { renderViewFromUrl } from "./views";
+import { updateWindowTitle } from "./window-title";
 
 async function init() {
     const config = getConfig();
 
-    await loadExternals();
-    initHighlighter();
+    if (config.loadExternals) await loadExternals();
+    if (config.highlight) initHighlighter();
 
     registerRouter({
-        async onViewChange(viewUrl, newViewHTML) {
-            const links = await findRelativeViews(viewUrl, newViewHTML, 'html', true);
-            document.body.innerHTML = newViewHTML + '<hr>' + links.map(x => `<a href="${absoluteLinkWithHashFromRelativePath(x.url)}">${extractRelativePartFromAbsolutePathWithHash(x.url)}</a>`).join('<br>');
+        async onRouteChange(newRoute) {
+            const ext = extractPathExt(newRoute.viewFileUrl);
+            updateWindowTitle(newRoute);
+
+            const html = await renderViewFromUrl(newRoute.viewFileUrl, ext);
+            // const links = await findRelativeViews(newRoute.viewFileUrl, html, 'html', true);
+            document.body.innerHTML = html; // + '<hr>' + links.map(x => `<a href="${absoluteLinkWithHashFromRelativePath(x.url)}">${extractRelativePartFromAbsolutePathWithHash(x.url)}</a>`).join('<br>');
             afterViewMount();
         }
     });

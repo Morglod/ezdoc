@@ -1,5 +1,5 @@
-import * as pathModule from 'path';
-import { absoluteLinkWithHashFromRelativePath, extractPathExt, relaxateLink } from "./paths";
+import { isAbsolute as isAbsolutePath, join as joinPath, dirname } from 'path';
+import { _deprec_absoluteLinkWithHashFromRelativePath, extractPathExt, _deprecate_relaxateLink } from "./paths";
 import { requestViewText, ViewExt } from "./views";
 
 const markdownRegex = /(?:[])|\[(?:.*?)\]\(([\w\.\/\%\&]+)\)/gm;
@@ -47,9 +47,9 @@ export async function findRelativeViews(
     _visited: string[] = [],
 ) {
     if (ext === 'unknown') return [];
-    const curDir = pathModule.dirname(viewPath);
+    const curDir = dirname(viewPath);
 
-    let absolutePathWHash = absoluteLinkWithHashFromRelativePath(viewPath);
+    let absolutePathWHash = _deprec_absoluteLinkWithHashFromRelativePath(viewPath);
 
     if (_visited.includes(absolutePathWHash)) return [];
     _visited.push(absolutePathWHash);
@@ -70,8 +70,8 @@ export async function findRelativeViews(
 
         for (const link of foundLinks) {
             let href = link;
-            if (!pathModule.isAbsolute(link)) {
-                href = pathModule.join(curDir, link);
+            if (!isAbsolutePath(link)) {
+                href = joinPath(curDir, link);
             }
             _awaitQueue!.push(requestViewText(href).then(childCode => {
                 return findRelativeViews(href, childCode, extractPathExt(link), recursive, _awaitQueue, _visited);

@@ -9,4 +9,6 @@ var ezdoc_config = {
     markdown: 'marked',
 
     highlight: 'prism',
+
+    defaultViewPath: '/hello.md',
 };
