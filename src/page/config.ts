@@ -1,3 +1,5 @@
+import { RouteInfo } from "./router";
+
 declare const ezdoc_config: {
     /** github path */
     repo: string,
@@ -20,6 +22,8 @@ declare const ezdoc_config: {
     title: 'auto' | ((viewPath: string) => string) | string,
 
     sanitize: false | 'dompurify',
+
+    afterRouteChange: ((newRoute: RouteInfo) => void)[],
 };
 
 export type Config = typeof ezdoc_config;
@@ -32,7 +36,8 @@ const defaultConfig: Config = {
     defaultViewPath: '../readme.md',
     loadExternals: true,
     title: 'auto',
-    sanitize: 'dompurify'
+    sanitize: 'dompurify',
+    afterRouteChange: [],
 };
 
 // apply default config values
